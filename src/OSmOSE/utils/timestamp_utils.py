@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 from typing import List
 import os
@@ -6,19 +6,17 @@ import os
 
 def check_epoch(df):
     "Function that adds epoch column to dataframe"
+    df["timestamp"] = df.timestamp.apply(lambda x: to_timestamp(x)).dt.tz_localize(None)
     if "epoch" in df.columns:
         return df
-    else:
-        try:
-            df["epoch"] = df.timestamp.apply(
-                lambda x: datetime.strptime(x[:26], "%Y-%m-%dT%H:%M:%S.%f").timestamp()
-            )
-            return df
-        except ValueError:
-            print(
-                "Please check that you have either a timestamp column (format ISO 8601 Micro s) or an epoch column"
-            )
-            return df
+    try:
+        df["epoch"] = df.timestamp.apply(lambda x: x.timestamp())
+    except ValueError:
+        print(
+            "Please check that you have either a timestamp column (format ISO 8601 Micro s) or an epoch column"
+        )
+    df["timestamp"] = df.timestamp.apply(from_timestamp)
+    return df
 
 
 def substract_timestamps(
@@ -54,15 +52,23 @@ def substract_timestamps(
 
 
 def to_timestamp(string: str) -> datetime:
+    if isinstance(string, datetime):
+        return string
     try:
         return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S.%fZ")
     except ValueError:
         try:
             return datetime.strptime(string, "%Y-%m-%dT%H-%M-%S_%fZ")
         except ValueError:
-            raise ValueError(
-                f"The timestamp '{string}' must match either format %Y-%m-%dT%H:%M:%S.%fZ or %Y-%m-%dT%H-%M-%S_%fZ"
-            )
+            try:
+                return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S.%f%z")
+            except ValueError:
+                try:
+                    return datetime.strptime(string, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    raise ValueError(
+                        f"The timestamp '{string}' must match either format %Y-%m-%dT%H:%M:%S.%fZ or %Y-%m-%dT%H-%M-%S_%fZ"
+                    )
 
 
 def from_timestamp(date: datetime) -> str:
