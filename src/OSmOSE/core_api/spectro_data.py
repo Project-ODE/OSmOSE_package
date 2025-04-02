@@ -12,7 +12,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import ShortTimeFFT
 
-from OSmOSE.config import TIMESTAMP_FORMAT_EXPORTED_FILES
+from OSmOSE.config import (
+    TIMESTAMP_FORMAT_EXPORTED_FILES,
+    TIMESTAMP_FORMAT_EXPORTED_FILES_WITH_TZ,
+)
 from OSmOSE.core_api.audio_data import AudioData
 from OSmOSE.core_api.base_data import BaseData
 from OSmOSE.core_api.spectro_file import SpectroFile
@@ -132,7 +135,7 @@ class SpectroData(BaseData[SpectroItem, SpectroFile]):
 
     def __str__(self) -> str:
         """Overwrite __str__."""
-        return self.begin.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES)
+        return self.begin.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES_WITH_TZ)
 
     def get_value(self) -> np.ndarray:
         """Return the Sx matrix of the spectrogram.
@@ -199,7 +202,12 @@ class SpectroData(BaseData[SpectroItem, SpectroFile]):
         plt.savefig(f"{folder / str(self)}", bbox_inches="tight", pad_inches=0)
         plt.close()
 
-    def write(self, folder: Path, sx: np.ndarray | None = None) -> None:
+    def write(
+        self,
+        folder: Path,
+        sx: np.ndarray | None = None,
+        link: bool = False,
+    ) -> None:
         """Write the Spectro data to file.
 
         Parameters
@@ -208,6 +216,10 @@ class SpectroData(BaseData[SpectroItem, SpectroFile]):
             Folder in which to write the Spectro file.
         sx: np.ndarray | None
             Spectrogram sx values. Will be computed if not provided.
+        link: bool
+            If True, the SpectroData will be bound to the written npz file.
+            Its items will be replaced with a single item, which will match the whole
+            new SpectroFile.
 
         """
         super().create_directories(path=folder)
@@ -230,6 +242,48 @@ class SpectroData(BaseData[SpectroItem, SpectroFile]):
             mfft=mfft,
             timestamps="_".join(timestamps),
         )
+        if link:
+            self.link(folder=folder)
+
+    def link(self, folder: Path) -> None:
+        """Link the SpectroData to a SpectroFile in the folder.
+
+        The given folder should contain a file named "str(self).npz".
+        Linking is intended for SpectroData objects that have already been written to disk.
+        After linking, the SpectroData will have a single item with the same
+        properties of the target SpectroFile.
+
+        Parameters
+        ----------
+        folder: Path
+            Folder in which is located the SpectroFile to which the SpectroData instance should be linked.
+
+        """
+        file = SpectroFile(
+            path=folder / f"{self}.npz",
+            strptime_format=[
+                TIMESTAMP_FORMAT_EXPORTED_FILES_WITH_TZ,
+                TIMESTAMP_FORMAT_EXPORTED_FILES,
+            ],
+        )
+        self.items = SpectroData.from_files([file]).items
+
+    def link_audio_data(self, audio_data: AudioData) -> None:
+        """Link the SpectroData to a given AudioData.
+
+        Parameters
+        ----------
+        audio_data: AudioData
+            The AudioData to which this SpectroData will be linked.
+
+        """
+        if self.begin != audio_data.begin:
+            raise ValueError("The begin of the audio data doesn't match.")
+        if self.end != audio_data.end:
+            raise ValueError("The begin of the audio data doesn't match.")
+        if self.fft.fs != audio_data.sample_rate:
+            raise ValueError("The sample rate of the audio data doesn't match.")
+        self.audio_data = audio_data
 
     def split(self, nb_subdata: int = 2) -> list[SpectroData]:
         """Split the spectro data object in the specified number of spectro subdata.

@@ -13,7 +13,10 @@ import numpy as np
 import soundfile as sf
 from pandas import Timedelta, Timestamp
 
-from OSmOSE.config import TIMESTAMP_FORMAT_EXPORTED_FILES
+from OSmOSE.config import (
+    TIMESTAMP_FORMAT_EXPORTED_FILES,
+    TIMESTAMP_FORMAT_EXPORTED_FILES_WITH_TZ,
+)
 from OSmOSE.core_api.audio_file import AudioFile
 from OSmOSE.core_api.audio_item import AudioItem
 from OSmOSE.core_api.base_data import BaseData
@@ -71,7 +74,11 @@ class AudioData(BaseData[AudioItem, AudioFile]):
 
     def __str__(self) -> str:
         """Overwrite __str__."""
-        return self.begin.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES)
+        return self.begin.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES_WITH_TZ)
+
+    def __eq__(self, other: AudioData) -> bool:
+        """Override __eq__."""
+        return self.sample_rate == other.sample_rate and super().__eq__(other)
 
     def _set_sample_rate(self, sample_rate: int | None = None) -> None:
         """Set the AudioFile sample rate.
@@ -119,7 +126,12 @@ class AudioData(BaseData[AudioItem, AudioFile]):
             data -= data.mean()
         return data
 
-    def write(self, folder: Path, subtype: str | None = None) -> None:
+    def write(
+        self,
+        folder: Path,
+        subtype: str | None = None,
+        link: bool = False,
+    ) -> None:
         """Write the audio data to file.
 
         Parameters
@@ -129,6 +141,10 @@ class AudioData(BaseData[AudioItem, AudioFile]):
         subtype: str | None
             Subtype as provided by the soundfile module.
             Defaulted as the default 16-bit PCM for WAV audio files.
+        link: bool
+            If True, the AudioData will be bound to the written file.
+            Its items will be replaced with a single item, which will match the whole
+            new AudioFile.
 
         """
         super().create_directories(path=folder)
@@ -138,6 +154,31 @@ class AudioData(BaseData[AudioItem, AudioFile]):
             self.sample_rate,
             subtype=subtype,
         )
+        if link:
+            self.link(folder=folder)
+
+    def link(self, folder: Path) -> None:
+        """Link the AudioData to an AudioFile in the folder.
+
+        The given folder should contain a file named "str(self).wav".
+        Linking is intended for AudioData objects that have already been written to disk.
+        After linking, the AudioData will have a single item with the same
+        properties of the target AudioFile.
+
+        Parameters
+        ----------
+        folder: Path
+            Folder in which is located the AudioFile to which the AudioData instance should be linked.
+
+        """
+        file = AudioFile(
+            path=folder / f"{self}.wav",
+            strptime_format=[
+                TIMESTAMP_FORMAT_EXPORTED_FILES_WITH_TZ,
+                TIMESTAMP_FORMAT_EXPORTED_FILES,
+            ],
+        )
+        self.items = AudioData.from_files([file]).items
 
     def _get_item_value(self, item: AudioItem) -> np.ndarray:
         """Return the resampled (if needed) data from the audio item."""
