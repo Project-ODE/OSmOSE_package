@@ -31,7 +31,7 @@ class SpectroFile(BaseFile):
         self,
         path: PathLike | str,
         begin: Timestamp | None = None,
-        strptime_format: str | None = None,
+        strptime_format: str | list[str] | None = None,
         timezone: str | pytz.timezone | None = None,
     ) -> None:
         """Initialize a SpectroFile object with a path and a begin timestamp.
@@ -61,7 +61,10 @@ class SpectroFile(BaseFile):
 
         """
         super().__init__(
-            path=path, begin=begin, strptime_format=strptime_format, timezone=timezone
+            path=path,
+            begin=begin,
+            strptime_format=strptime_format,
+            timezone=timezone,
         )
         self._read_metadata(path=path)
 
@@ -74,6 +77,8 @@ class SpectroFile(BaseFile):
             window = data["window"]
             mfft = data["mfft"][0]
             timestamps = str(data["timestamps"])
+            db_ref = data["db_ref"][0]
+            v_lim = tuple(data["v_lim"])
             is_complex = np.iscomplexobj(data["sx"])
 
         self.sample_rate = sample_rate
@@ -90,6 +95,9 @@ class SpectroFile(BaseFile):
         self.hop = hop
 
         self.sx_dtype = complex if is_complex else float
+
+        self.db_ref = db_ref
+        self.v_lim = v_lim
 
     def read(self, start: Timestamp, stop: Timestamp) -> np.ndarray:
         """Return the spectro data between start and stop from the file.
