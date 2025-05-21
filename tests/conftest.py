@@ -15,6 +15,8 @@ from scipy.signal import chirp
 
 from OSmOSE.config import OSMOSE_PATH, TIMESTAMP_FORMAT_TEST_FILES
 from OSmOSE.core_api import AudioFileManager
+from OSmOSE.core_api.base_dataset import BaseDataset
+from OSmOSE.core_api.base_file import BaseFile
 from OSmOSE.utils.audio_utils import generate_sample_audio
 
 
@@ -23,36 +25,64 @@ def audio_files(
     tmp_path: Path,
     request: pytest.fixtures.Subrequest,
 ) -> tuple[list[Path], pytest.fixtures.Subrequest]:
-    nb_files = request.param.get("nb_files", 1)
+    nb_files = request.param.get("nb_files", 1) if hasattr(request, "param") else 1
 
     if nb_files == 0:
         return [], request
 
-    sample_rate = request.param.get("sample_rate", 48_000)
-    duration = request.param.get("duration", 1.0)
-    date_begin = request.param.get("date_begin", pd.Timestamp("2000-01-01 00:00:00"))
-    inter_file_duration = request.param.get("inter_file_duration", 0)
-    series_type = request.param.get("series_type", "repeat")
-    format = request.param.get("format", "wav")
+    if hasattr(request, "param"):
+        sample_rate = request.param.get("sample_rate", 48_000)
+        duration = request.param.get("duration", 1.0)
+        date_begin = request.param.get(
+            "date_begin",
+            pd.Timestamp("2000-01-01 00:00:00"),
+        )
+        inter_file_duration = request.param.get("inter_file_duration", 0)
+        series_type = request.param.get("series_type", "repeat")
+        sine_frequency = request.param.get("sine_frequency", 1000.0)
+        magnitude = request.param.get("magnitude", 1.0)
+        format = request.param.get("format", "wav")
+        datetime_format = request.param.get(
+            "datetime_format",
+            TIMESTAMP_FORMAT_TEST_FILES,
+        )
+    else:
+        sample_rate = 48_000
+        duration = 1.0
+        date_begin = pd.Timestamp("2000-01-01 00:00:00")
+        inter_file_duration = 0
+        series_type = "repeat"
+        sine_frequency = 1000.0
+        magnitude = 1.0
+        format = "wav"
+        datetime_format = TIMESTAMP_FORMAT_TEST_FILES
 
     nb_samples = int(round(duration * sample_rate))
     data = generate_sample_audio(
         nb_files=nb_files,
         nb_samples=nb_samples,
         series_type=series_type,
+        sine_frequency=sine_frequency,
+        max_value=magnitude,
+        duration=duration,
     )
     files = []
-    for index, begin_time in enumerate(
+    file_begin_timestamps = (
         list(
             pd.date_range(
                 date_begin,
                 periods=nb_files,
                 freq=pd.Timedelta(seconds=duration + inter_file_duration),
             ),
-        ),
-    ):
-        time_str = begin_time.strftime(format=TIMESTAMP_FORMAT_TEST_FILES)
-        file = tmp_path / f"audio_{time_str}.{format}"
+        )
+        if duration + inter_file_duration != 0
+        else [date_begin] * nb_files
+    )
+    for index, begin_time in enumerate(file_begin_timestamps):
+        time_str = begin_time.strftime(format=datetime_format)
+        idx = 0
+        while (file := tmp_path / f"audio_{time_str}_{idx}.{format}").exists():
+            idx += 1
         files.append(file)
         kwargs = {
             "file": file,
@@ -122,6 +152,24 @@ def patch_afm_open(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
 
     monkeypatch.setattr(AudioFileManager, "_open", mock_open)
     return opened_files
+
+
+@pytest.fixture
+def base_dataset(tmp_path: Path) -> BaseDataset:
+    files = [tmp_path / f"file_{i}.txt" for i in range(5)]
+    for file in files:
+        file.touch()
+    timestamps = pd.date_range(
+        start=pd.Timestamp("2000-01-01 00:00:00"),
+        freq="1s",
+        periods=5,
+    )
+
+    bfs = [
+        BaseFile(path=file, begin=timestamp, end=timestamp + pd.Timedelta(seconds=1))
+        for file, timestamp in zip(files, timestamps)
+    ]
+    return BaseDataset.from_files(files=bfs, bound="files")
 
 
 @pytest.fixture
