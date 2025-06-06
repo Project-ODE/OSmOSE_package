@@ -60,7 +60,6 @@ def test_read(
     frames: tuple[int, int],
     expected: np.ndarray,
 ) -> None:
-
     audio_files, _ = audio_files
     afm = AudioFileManager()
     params = {"start": frames[0], "stop": frames[1]}
@@ -191,7 +190,6 @@ def test_switch(
     patch_afm_open: list[Path],
     expected_opened_files: list[int],
 ) -> None:
-
     afm = AudioFileManager()
     audio_files, _ = audio_files
     for file in file_openings:
@@ -221,7 +219,7 @@ def test_close(audio_files: tuple[list[Path], pytest.fixtures.Subrequest]) -> No
     afm.read(audio_files[0])
     assert afm.opened_file is not None
     assert Path(afm.opened_file.name) == audio_files[0]
-    afm._close()
+    afm.close()
     assert afm.opened_file is None
 
 

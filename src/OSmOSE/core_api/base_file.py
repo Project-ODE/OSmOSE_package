@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from OSmOSE.config import TIMESTAMP_FORMAT_EXPORTED_FILES
+from OSmOSE.config import (
+    TIMESTAMP_FORMAT_EXPORTED_FILES_WITH_TZ,
+)
 from OSmOSE.utils.timestamp_utils import localize_timestamp
 
 if TYPE_CHECKING:
@@ -36,7 +38,7 @@ class BaseFile(Event):
         path: PathLike | str,
         begin: Timestamp | None = None,
         end: Timestamp | None = None,
-        strptime_format: str | None = None,
+        strptime_format: str | list[str] | None = None,
         timezone: str | pytz.timezone | None = None,
     ) -> None:
         """Initialize a File object with a path and timestamps.
@@ -115,8 +117,8 @@ class BaseFile(Event):
         """
         return {
             "path": str(self.path),
-            "begin": self.begin.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES),
-            "end": self.end.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES),
+            "begin": self.begin.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES_WITH_TZ),
+            "end": self.end.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES_WITH_TZ),
         }
 
     def __hash__(self) -> int:
@@ -125,4 +127,24 @@ class BaseFile(Event):
 
     def __str__(self) -> str:
         """Overwrite __str__."""
-        return self.begin.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES)
+        return self.begin.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES_WITH_TZ)
+
+    def __eq__(self, other: BaseFile):
+        """Override __eq__."""
+        if not isinstance(other, BaseFile):
+            return False
+        return self.path == other.path and super().__eq__(other)
+
+    def move(self, folder: Path) -> None:
+        """Move the file to the target folder.
+
+        Parameters
+        ----------
+        folder: Path
+            destination folder where the file will be moved.
+
+        """
+        destination_path = folder / self.path.name
+        folder.mkdir(exist_ok=True, parents=True)
+        self.path.rename(destination_path)
+        self.path = destination_path
